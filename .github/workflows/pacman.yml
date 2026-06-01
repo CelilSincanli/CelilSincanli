@@ -1,44 +1,72 @@
 name: generate pacman game
 
 on:
-    schedule:
-        - cron: '0 */6 * * *' # Every 6 hours
-    workflow_dispatch: # Manual trigger
-    push:
-        branches:
-            - main
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-    generate:
-        permissions:
-            contents: write
-        runs-on: ubuntu-latest
-        timeout-minutes: 10
+  generate:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+    permissions:
+      contents: write
 
-            - name: Create output branch if not exists
-              run: |
-                  git fetch --all
-                  git branch -r | grep origin/output || git checkout --orphan output && git push origin output
+    steps:
+      # ---------------------------
+      # 1. Checkout repo
+      # ---------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Increase Node memory
-              run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
+      # ---------------------------
+      # 2. Ensure output branch exists
+      # ---------------------------
+      - name: Create output branch if not exists
+        run: |
+          git fetch origin
 
-            - name: Generate pacman graph (light & dark)
-              uses: DuyetBKU/viz-pacman-github-profile@main
-              with:
-                  github_user_name: ${{ github.repository_owner }}
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-                  theme: react-dark
-                  music: 'false'
+          if git ls-remote --exit-code --heads origin output; then
+            echo "output branch already exists"
+          else
+            echo "creating output branch"
 
-            - name: Push to output branch
-              uses: crazy-max/ghaction-github-pages@v3.1.0
-              with:
-                  target_branch: output
-                  build_dir: dist
-              env:
-                  GITHUB_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+            git checkout --orphan output
+            git rm -rf .
+
+            git commit --allow-empty -m "init output branch"
+            git push origin output
+
+            git checkout main
+          fi
+
+      # ---------------------------
+      # 3. Increase Node memory (safe)
+      # ---------------------------
+      - name: Increase Node memory
+        run: echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
+
+      # ---------------------------
+      # 4. Generate Pacman SVG
+      # ---------------------------
+      - name: Generate pacman graph
+        uses: DuyetBKU/viz-pacman-github-profile@main
+        with:
+          github_user_name: ${{ github.repository_owner }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          theme: react-dark
+          music: "false"
+
+      # ---------------------------
+      # 5. Push output branch (SVG files)
+      # ---------------------------
+      - name: Deploy to output branch
+        uses: crazy-max/ghaction-github-pages@v3.1.0
+        with:
+          target_branch: output
+          build_dir: dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
